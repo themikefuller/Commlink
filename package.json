@@ -1,8 +1,8 @@
 {
   "name": "commlink",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "JavaScript Encrypted Communications",
-  "main": "commlink.js",
+  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
