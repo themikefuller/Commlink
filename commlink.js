@@ -90,8 +90,22 @@ function Commlink(crypto) {
   };
 
   commlink.getPublic = async (entity = {}) => {
-    let result = Object.clone(entity);
-    delete result.key;
+    let result = {};
+    if (entity.id) {
+      result.id = entity.id;
+    }
+    if (entity.uid) {
+      result.uid = entity.uid;
+    }
+    if (entity.pub) {
+      result.pub = entity.pub;
+    }
+    if (entity.msg) {
+      result.msg = entity.msg;
+    }
+    if (entity.sig) {
+      result.sig = entity.sig;
+    }
     return result;
   };
 
@@ -353,13 +367,16 @@ function Commlink(crypto) {
     } = params;
 
     let alice = {};
-    alice.id = await commlink.createECDH();
+    alice.id = await commlink.createUser();
+    alice.pub = await commlink.getPublic(alice.id);
+    
 
     let bob = {};
-    bob.id = await commlink.createECDH();
+    bob.id = await commlink.createUser();
+    bob.pub = await commlink.getPublic(bob.id);
 
-    alice.link = await commlink.link(alice.id.key, bob.id.pub);
-    bob.link = await commlink.link(bob.id.key, alice.id.pub);
+    alice.link = await commlink.link(alice.id.key, bob.pub.pub);
+    bob.link = await commlink.link(bob.id.key, alice.pub.pub);
 
     alice.bits = await commlink.pbkdf2(alice.link, null, 256, iterations || 1);
     bob.bits = await commlink.pbkdf2(bob.link, null, 256, iterations || 1);
