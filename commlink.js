@@ -278,7 +278,7 @@ function Commlink(crypto) {
     let chain = [];
     let dBits = null;
     if (alg === 'pbkdf2') {
-      dBits = await commlink.pbkdf2(keyBits, null, 256 * parseInt(size));
+      dBits = await commlink.pbkdf2(keyBits, commlink.fromText(info||""), 256 * parseInt(size));
     } else {
       dBits = await commlink.hkdf(keyBits, null, info || "", 256 * parseInt(size));
     }
