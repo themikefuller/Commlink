@@ -56,6 +56,10 @@ function Commlink(crypto) {
     return textEncoder(str);
   };
 
+  commlink.toText = (byteArray) => {
+    return textDecoder(byteArray);
+  };
+
   const textEncoder = (str) => {
     return new Uint8Array(str.split('').map(val => {
       return val.charCodeAt(0);
