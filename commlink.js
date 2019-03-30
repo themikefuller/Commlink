@@ -8,6 +8,8 @@ function Commlink(crypto) {
     crypto = window.crypto || crypto;
   }
 
+  commlink.crypto = crypto;
+
   const getSaltBits = (salt, length) => {
     let saltBits = new Uint8Array(length);
     if (salt) {
@@ -156,8 +158,8 @@ function Commlink(crypto) {
     };
   };
 
-  commlink.createUser = async () => {
-    let user = await commlink.createECDSA();
+  commlink.createUser = async (curve="P-256") => {
+    let user = await commlink.createECDSA(curve||"P-256");
     user.sig = await commlink.sign(user.key, user.pub);
     return user;
   };
@@ -251,7 +253,7 @@ function Commlink(crypto) {
 
   };
 
-  commlink.link = async (key, pub, curve = "P-256", size = 256) => {
+  commlink.ecdh = async (key, pub, curve = "P-256", size = 256) => {
 
     let pubKey = await crypto.subtle.importKey('raw', commlink.decode(pub), {
       "name": "ECDH",
@@ -271,6 +273,29 @@ function Commlink(crypto) {
     let bits = commlink.encode(shared);
 
     return bits;
+
+  };
+
+  commlink.link = async (key, pub, curve = "P-256", size = 256) => {
+
+    let pubKey = await crypto.subtle.importKey('raw', commlink.decode(pub), {
+      "name": "ECDH",
+      "namedCurve": curve
+    }, true, []);
+
+    let privateKey = await crypto.subtle.importKey('pkcs8', commlink.decode(key), {
+      "name": "ECDH",
+      "namedCurve": curve
+    }, true, ['deriveBits']);
+
+    let shared = await crypto.subtle.deriveBits({
+      "name": "ECDH",
+      "public": pubKey
+    }, privateKey, size);
+
+    let bits = commlink.encode(shared);
+    let id = await commlink.getId(bits);
+    return {id, bits};
 
   };
 
@@ -379,8 +404,9 @@ function Commlink(crypto) {
     bob.id = await commlink.createUser();
     bob.pub = await commlink.getPublic(bob.id);
 
-    alice.link = await commlink.link(alice.id.key, bob.pub.pub);
-    bob.link = await commlink.link(bob.id.key, alice.pub.pub);
+    alice.link = await commlink.ecdh(alice.id.key, bob.pub.pub);
+    bob.link = await commlink.ecdh(bob.id.key, alice.pub.pub);
+    let link = await commlink.link(bob.id.key, alice.pub.pub);
 
     alice.bits = await commlink.pbkdf2(alice.link, null, 256, iterations || 1);
     bob.bits = await commlink.pbkdf2(bob.link, null, 256, iterations || 1);
@@ -402,7 +428,8 @@ function Commlink(crypto) {
 
     return {
       alice,
-      bob
+      bob,
+      link
     };
 
   };
