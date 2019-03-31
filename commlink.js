@@ -32,14 +32,15 @@ function Commlink(crypto) {
 
   commlink.toHex = (byteArray) => {
     return Array.from(new Uint8Array(byteArray)).map(val => {
-      return ('00' + val.toString(16)).slice(-2);
+      return ('0' + val.toString(16)).slice(-2);
     }).join('');
   };
 
   commlink.fromHex = (str) => {
-    return new Uint8Array(str.match(/.{0,2}/g).map(val => {
+    let result = new Uint8Array(str.match(/.{0,2}/g).map(val => {
       return parseInt(val, 16);
     }));
+    return result.slice(0,result.length - 1);
   };
 
   commlink.encode = commlink.toB64 = (byteArray) => {
