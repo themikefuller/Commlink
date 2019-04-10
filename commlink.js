@@ -10,8 +10,8 @@ function Commlink(crypto) {
 
   commlink.crypto = crypto;
 
-  const getSaltBits = (salt, length) => {
-    let saltBits = new Uint8Array(length);
+  const getSaltBits = (salt) => {
+    let saltBits = new Uint8Array(32);
     if (salt) {
       if (typeof salt === 'string') {
         saltBits = commlink.fromText(salt);
@@ -219,7 +219,7 @@ function Commlink(crypto) {
 
   commlink.pbkdf2 = async (bits, salt = null, size = 256, iterations = 1, hashAlg = "SHA-256") => {
     let keyBits = getKeyBits(bits);
-    let saltBits = getSaltBits(salt, keyBits.length);
+    let saltBits = getSaltBits(salt);
 
     let key = await crypto.subtle.importKey('raw', keyBits, {
       "name": "PBKDF2"
@@ -236,7 +236,7 @@ function Commlink(crypto) {
 
   commlink.hkdf = async (bits, salt = null, info = "", size = 256, hashAlg = "SHA-256") => {
     let keyBits = getKeyBits(bits);
-    let saltBits = getSaltBits(salt, keyBits.length);
+    let saltBits = getSaltBits(salt);
     let infoBits = commlink.fromText(info || "");
 
     let key = await crypto.subtle.importKey('raw', keyBits, {
@@ -325,7 +325,7 @@ function Commlink(crypto) {
     let keyBits = getKeyBits(bits);
     let message = JSON.stringify(msg);
     let data = textEncoder(message);
-    let salt = crypto.getRandomValues(new Uint8Array(keyBits.length));
+    let salt = crypto.getRandomValues(new Uint8Array(32));
 
     let secret = commlink.decode(await commlink.pbkdf2(keyBits, salt, 512, parseInt(iterations)));
 
