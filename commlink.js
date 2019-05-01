@@ -43,13 +43,13 @@ function Commlink(crypto) {
     return result.slice(0,result.length - 1);
   };
 
-  commlink.encode = commlink.toB64 = (byteArray) => {
+  commlink.encode = commlink.toB64url = (byteArray) => {
     return btoa(Array.from(new Uint8Array(byteArray)).map(val => {
       return String.fromCharCode(val);
     }).join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
   };
 
-  commlink.decode = commlink.fromB64 = (str) => {
+  commlink.decode = commlink.fromB64url = (str) => {
     return new Uint8Array(atob(str.replace(/\_/g, '/').replace(/\-/g, '+')).split('').map(val => {
       return val.charCodeAt(0);
     }));
@@ -120,15 +120,6 @@ function Commlink(crypto) {
     return crypto.getRandomValues(new Uint8Array(size));
   };
 
-  commlink.randomNumber = (digits, asString = false) => {
-    let num = commlink.random(digits * 2).join('').slice(0, digits);
-    if (asString) {
-      return num;
-    } else {
-      return parseInt(num);
-    }
-  };
-
   commlink.createECDH = async (curve = "P-256") => {
     let DH = await crypto.subtle.generateKey({
       "name": "ECDH",
@@ -157,12 +148,6 @@ function Commlink(crypto) {
       "pub": commlink.encode(pub),
       "key": key
     };
-  };
-
-  commlink.createUser = async (curve="P-256") => {
-    let user = await commlink.createECDSA(curve||"P-256");
-    user.sig = await commlink.sign(user.key, user.pub);
-    return user;
   };
 
   commlink.sign = async (key, msg, curve = "P-256") => {
@@ -279,38 +264,23 @@ function Commlink(crypto) {
 
   commlink.link = async (key, pub, curve = "P-256", size = 256) => {
 
-    let pubKey = await crypto.subtle.importKey('raw', commlink.decode(pub), {
-      "name": "ECDH",
-      "namedCurve": curve
-    }, true, []);
-
-    let privateKey = await crypto.subtle.importKey('pkcs8', commlink.decode(key), {
-      "name": "ECDH",
-      "namedCurve": curve
-    }, true, ['deriveBits']);
-
-    let shared = await crypto.subtle.deriveBits({
-      "name": "ECDH",
-      "public": pubKey
-    }, privateKey, size);
-
-    let bits = commlink.encode(shared);
+    let bits = await commlink.ecdh(key, pub, curve, size);
     let id = await commlink.getId(bits);
     return {id, bits};
 
   };
 
-  commlink.chain = async (bits, info = "", size = 10, alg = "hkdf") => {
+  commlink.chain = async (bits, info = "", size = 10, alg = "pbkdf2") => {
     let keyBits = bits;
     if (typeof bits === 'string') {
       keyBits = commlink.decode(bits);
     }
     let chain = [];
     let dBits = null;
-    if (alg === 'pbkdf2') {
-      dBits = await commlink.pbkdf2(keyBits, commlink.fromText(info||""), 256 * parseInt(size));
-    } else {
+    if (alg === 'hkdf') {
       dBits = await commlink.hkdf(keyBits, null, info || "", 256 * parseInt(size));
+    } else {
+      dBits = await commlink.pbkdf2(keyBits, commlink.fromText(info||""), 256 * parseInt(size));
     }
     let arrayBits = Array.from(commlink.decode(dBits));
     for (let i = 0; i < size; i++) {
@@ -329,7 +299,7 @@ function Commlink(crypto) {
 
     let secret = commlink.decode(await commlink.pbkdf2(keyBits, salt, 512, parseInt(iterations)));
 
-    let iv = secret.slice(0, 12);
+    let iv = commlink.random(12);
 
     let secretKey = await crypto.subtle.importKey('raw', secret.slice(32, 64), {
       "name": "AES-GCM"
@@ -342,20 +312,19 @@ function Commlink(crypto) {
 
     let it = textEncoder(iterations.toString());
 
-    return commlink.toB64(it) + '.' + commlink.toB64(salt) + '.' + commlink.toB64(encrypted);
+    return commlink.encode(it) + '.' + commlink.encode(salt) + '.' + commlink.encode(iv) + '.' + commlink.encode(encrypted);
 
   };
 
   commlink.decrypt = async (payload = null, bits = null) => {
     let keyBits = getKeyBits(bits);
     let parts = payload.split('.');
-    let iterations = parseInt(textDecoder(commlink.fromB64(parts[0])));
-    let salt = commlink.fromB64(parts[1]);
-    let data = commlink.fromB64(parts[2]);
+    let iterations = parseInt(textDecoder(commlink.decode(parts[0])));
+    let salt = commlink.decode(parts[1]);
+    let iv = commlink.decode(parts[2]);
+    let data = commlink.decode(parts[3]);
 
     let secret = commlink.decode(await commlink.pbkdf2(keyBits, salt, 512, iterations));
-
-    let iv = secret.slice(0, 12);
 
     let secretKey = await crypto.subtle.importKey('raw', secret.slice(32, 64), {
       "name": "AES-GCM"
@@ -397,20 +366,23 @@ function Commlink(crypto) {
     } = params;
 
     let alice = {};
-    alice.id = await commlink.createUser();
-    alice.pub = await commlink.getPublic(alice.id);
-    
+    alice.id = await commlink.createECDH();
+    alice.id.sig = await commlink.sign(alice.id.key, alice.id.pub);      
+    alice.card = await commlink.getPublic(alice.id);
 
     let bob = {};
-    bob.id = await commlink.createUser();
-    bob.pub = await commlink.getPublic(bob.id);
+    bob.id = await commlink.createECDH();
+    bob.id.sig = await commlink.sign(bob.id.key, bob.id.pub);
+    bob.card = await commlink.getPublic(bob.id);
 
-    alice.link = await commlink.ecdh(alice.id.key, bob.pub.pub);
-    bob.link = await commlink.ecdh(bob.id.key, alice.pub.pub);
-    let link = await commlink.link(bob.id.key, alice.pub.pub);
+    alice.card.verified = await commlink.verify(alice.card.pub, alice.card.sig, alice.card.pub);
+    bob.card.verified = await commlink.verify(bob.card.pub, bob.card.sig, bob.card.pub);
 
-    alice.bits = await commlink.pbkdf2(alice.link, null, 256, iterations || 1);
-    bob.bits = await commlink.pbkdf2(bob.link, null, 256, iterations || 1);
+    alice.link = await commlink.link(alice.id.key, bob.card.pub);
+    bob.link = await commlink.link(bob.id.key, alice.card.pub);
+
+    alice.bits = await commlink.pbkdf2(alice.link.bits, null, 256, iterations || 1);
+    bob.bits = await commlink.pbkdf2(bob.link.bits, null, 256, iterations || 1);
 
     alice.chain = await commlink.chain(alice.bits, "", chainSize || 10, chainAlg || null);
     bob.chain = await commlink.chain(bob.bits, "", chainSize || 10, chainAlg || null);
@@ -429,8 +401,7 @@ function Commlink(crypto) {
 
     return {
       alice,
-      bob,
-      link
+      bob
     };
 
   };
