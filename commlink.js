@@ -33,13 +33,13 @@ function Commlink(crypto) {
     }));
   };
 
-  const fromText = (string) => {
+  const fromText = commlink.fromText = (string) => {
     return new Uint8Array(string.split('').map(val => {
       return val.charCodeAt(0);
     }));
   };
 
-  const toText = (byteArray) => {
+  const toText = commlink.toText = (byteArray) => {
     return Array.from(new Uint8Array(byteArray)).map(val => {
       return String.fromCharCode(val);
     }).join('');
