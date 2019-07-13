@@ -30,10 +30,9 @@ async function Test(params={}) {
     alice.card.verified = await commlink.verify(alice.card.idk, alice.card.sig, alice.card.spk);
     bob.card.verified = await commlink.verify(bob.card.idk, bob.card.sig, bob.card.spk);
 
-
     alice.sharedKey = await commlink.ecdh(alice.spk.key, bob.card.spk);
     bob.sharedKey = await commlink.ecdh(bob.spk.key, alice.card.spk);
-    
+
     alice.encrypted = await commlink.encrypt("Hello Bob!", comm.decode(alice.sharedKey));
     bob.decrypted = await commlink.decrypt(alice.encrypted, comm.decode(bob.sharedKey));
 
