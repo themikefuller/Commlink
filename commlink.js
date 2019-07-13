@@ -33,13 +33,13 @@ function Commlink(crypto) {
     }));
   };
 
-  const textEncoder = commlink.fromText = (string) => {
+  const fromText = (string) => {
     return new Uint8Array(string.split('').map(val => {
       return val.charCodeAt(0);
     }));
   };
 
-  const textDecoder = commlink.toText = (byteArray) => {
+  const toText = (byteArray) => {
     return Array.from(new Uint8Array(byteArray)).map(val => {
       return String.fromCharCode(val);
     }).join('');
@@ -93,7 +93,7 @@ function Commlink(crypto) {
   };
 
   const ecdsaSign = commlink.ecdsaSign = commlink.sign = async (key, msg, curve = "P-256") => {
-    let message = JSON.stringify(msg);
+    let message = msg.toString();
     let signKey = await crypto.subtle.importKey('pkcs8', decode(key), {
       "name": "ECDSA",
       "namedCurve": curve
@@ -101,12 +101,12 @@ function Commlink(crypto) {
     let sig = await crypto.subtle.sign({
       "name": "ECDSA",
       "hash": "sha-256"
-    }, signKey, textEncoder(message));
+    }, signKey, fromText(message));
     return encode(sig);
   };
 
   const ecdsaVerify = commlink.ecdsaVerify = commlink.verify = async (pub, sig, msg, curve = "P-256") => {
-    let message = JSON.stringify(msg);
+    let message = msg.toString();
     let verifyKey = await crypto.subtle.importKey('raw', decode(pub), {
       "name": "ECDSA",
       "namedCurve": curve
@@ -114,12 +114,12 @@ function Commlink(crypto) {
     let verified = await crypto.subtle.verify({
       "name": "ECDSA",
       "hash": "sha-256"
-    }, verifyKey, decode(sig), textEncoder(message));
+    }, verifyKey, decode(sig), fromText(message));
     return verified;
   };
 
   const hmacSign = commlink.hmacSign = async (bits, msg) => {
-    let message = JSON.stringify(msg);
+    let message = msg.toString();
     let hmacKey = await crypto.subtle.importKey('raw', bits, {
       "name": "HMAC",
       "hash": "SHA-256"
@@ -127,12 +127,12 @@ function Commlink(crypto) {
     let sig = await crypto.subtle.sign({
       "name": "HMAC",
       "hash": "SHA-256"
-    }, hmacKey, textEncoder(message));
+    }, hmacKey, fromText(message));
     return encode(sig);
   };
 
   const hmacVerify = commlink.hmacVerify = async (bits, sig, msg) => {
-    let message = JSON.stringify(msg);
+    let message = msg.toString();
     let verifyKey = await crypto.subtle.importKey('raw', bits, {
       "name": "HMAC",
       "hash": "SHA-256"
@@ -140,7 +140,7 @@ function Commlink(crypto) {
     let verified = await crypto.subtle.verify({
       "name": "HMAC",
       "hash": "sha-256"
-    }, verifyKey, decode(sig), textEncoder(message));
+    }, verifyKey, decode(sig), fromText(message));
     return verified;
   };
 
@@ -207,16 +207,16 @@ function Commlink(crypto) {
 
   };
 
-  const encrypt = commlink.encrypt = async (message = {}, bits, AD = null) => {
+  const encrypt = commlink.encrypt = async (message, bits, AD = null) => {
     let key = await crypto.subtle.importKey('raw', bits, {
       "name": "AES-GCM"
     }, false, ['encrypt']);
     let iv = random(12);
-    let msg = textEncoder(JSON.stringify(message));
+    let msg = fromText(message);
     let cipher = await crypto.subtle.encrypt({
       "name": "AES-GCM",
       "iv": iv,
-      "additionalData": AD || textEncoder('')
+      "additionalData": AD || fromText('')
     }, key, msg);
     return encode(iv) + '.' + encode(cipher);
   };
@@ -230,24 +230,24 @@ function Commlink(crypto) {
     let decrypted = await crypto.subtle.decrypt({
       "name": "AES-GCM",
       "iv": iv,
-      "additionalData": AD || textEncoder('')
+      "additionalData": AD || fromText('')
     }, key, cipher).catch(err => {
       throw({"message":"Failed to decrypt message.", "error":err});
     });
-    return JSON.parse(textDecoder(decrypted));
+    return toText(decrypted);
   };
 
-  const passwordEncrypt = commlink.passwordEncrypt = async (message = {}, password = "", iterations = 100000) => {
+  const passwordEncrypt = commlink.passwordEncrypt = async (message, password = "", iterations = 100000) => {
     let salt = random(32);
-    let keyBits = await pbkdf2(textEncoder(password), salt, iterations, 256);
+    let keyBits = await pbkdf2(fromText(password), salt, iterations, 256);
     let encrypted = await encrypt(message, decode(keyBits));
-    return encode(textEncoder(iterations.toString())) + '.' + encode(salt) + '.' + encrypted;
+    return encode(fromText(iterations.toString())) + '.' + encode(salt) + '.' + encrypted;
   };
 
   const passwordDecrypt = commlink.passwordDecrypt = async (ciphertext = "", password = "") => {
-    let iterations = textDecoder(decode(ciphertext.split('.')[0]));
+    let iterations = toText(decode(ciphertext.split('.')[0]));
     let salt = ciphertext.split('.')[1];
-    let keyBits = await pbkdf2(textEncoder(password), decode(salt), iterations, 256);
+    let keyBits = await pbkdf2(fromText(password), decode(salt), iterations, 256);
     let encrypted = ciphertext.split('.').slice(2).join('.');
     let decrypted = await decrypt(encrypted, decode(keyBits));
     return decrypted;
