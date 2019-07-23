@@ -92,7 +92,7 @@ function Commlink(crypto) {
     };
   };
 
-  const ecdsaSign = commlink.ecdsaSign = commlink.sign = async (key, msg, curve = "P-256") => {
+  const ecdsaSign = commlink.ecdsaSign = commlink.sign = async (key, msg, curve = "P-256", hashAlg = "SHA-256") => {
     let message = msg.toString();
     let signKey = await crypto.subtle.importKey('pkcs8', decode(key), {
       "name": "ECDSA",
@@ -100,12 +100,12 @@ function Commlink(crypto) {
     }, false, ['sign']);
     let sig = await crypto.subtle.sign({
       "name": "ECDSA",
-      "hash": "sha-256"
+      "hash": hashAlg
     }, signKey, fromText(message));
     return encode(sig);
   };
 
-  const ecdsaVerify = commlink.ecdsaVerify = commlink.verify = async (pub, sig, msg, curve = "P-256") => {
+  const ecdsaVerify = commlink.ecdsaVerify = commlink.verify = async (pub, sig, msg, curve = "P-256", hashAlg = "SHA-256") => {
     let message = msg.toString();
     let verifyKey = await crypto.subtle.importKey('raw', decode(pub), {
       "name": "ECDSA",
@@ -113,33 +113,33 @@ function Commlink(crypto) {
     }, false, ['verify']);
     let verified = await crypto.subtle.verify({
       "name": "ECDSA",
-      "hash": "sha-256"
+      "hash": hashAlg
     }, verifyKey, decode(sig), fromText(message));
     return verified;
   };
 
-  const hmacSign = commlink.hmacSign = async (bits, msg) => {
+  const hmacSign = commlink.hmacSign = async (bits, msg, hashAlg="SHA-256") => {
     let message = msg.toString();
     let hmacKey = await crypto.subtle.importKey('raw', bits, {
       "name": "HMAC",
-      "hash": "SHA-256"
+      "hash": hashAlg,
     }, false, ['sign']);
     let sig = await crypto.subtle.sign({
       "name": "HMAC",
-      "hash": "SHA-256"
+      "hash": hashAlg
     }, hmacKey, fromText(message));
     return encode(sig);
   };
 
-  const hmacVerify = commlink.hmacVerify = async (bits, sig, msg) => {
+  const hmacVerify = commlink.hmacVerify = async (bits, sig, msg, hashAlg="SHA-256") => {
     let message = msg.toString();
     let verifyKey = await crypto.subtle.importKey('raw', bits, {
       "name": "HMAC",
-      "hash": "SHA-256"
+      "hash": hashAlg,
     }, false, ['verify']);
     let verified = await crypto.subtle.verify({
       "name": "HMAC",
-      "hash": "sha-256"
+      "hash": hashAlg
     }, verifyKey, decode(sig), fromText(message));
     return verified;
   };
@@ -163,26 +163,41 @@ function Commlink(crypto) {
       "iterations": iterations,
       "hash": hashAlg
     }, key, size);
+
     return encode(result);
 
   };
 
+  const hkdf = commlink.hkdf = async (bits, salt, info, size, hashAlg="SHA-256") => {
+    let ikm = bits;
+    let len = size;
+    let hashSize = 256;
+    if (hashAlg.toLocaleUpperCase() === 'SHA-512') {
+      hashSize = 512;
+    }
+    if (len > 255 * hashSize) {
+      throw("Error: Size exceeds maximum output length for selected hash.");
+    }
+    if (len < 8) {
+      throw("Error: Size cannot be smaller 8 bits.");
+    }
+    if (len / 8 !== parseInt(len / 8)) {
+      throw("Error: Size must be a multiple of 8 bits.");
+    }
 
-  const hkdf = commlink.hkdf = async (bits, salt, info, size = 256, hashAlg = "SHA-256") => {
-
-    let key = await crypto.subtle.importKey('raw', bits, {
-      "name": "hkdf"
-    }, false, ['deriveBits']);
-
-    let result = await crypto.subtle.deriveBits({
-      "name": "hkdf",
-      "salt": salt,
-      "info": info,
-      "hash": hashAlg
-    }, key, size);
-    return encode(result);
-
-  };
+    let PRK = await hmacSign(salt, toText(ikm), hashAlg);
+    let result = new Uint8Array([]);
+    let T = new Uint8Array([]);
+    let rounds = Math.ceil(size / hashSize);
+    for (let i = 0; i < rounds; i++) {
+      let num = toText(new Uint8Array([i + 1]));
+      let t = toText(T) + toText(info);
+      let msg = t + num;
+      T = decode(await hmacSign(decode(PRK), msg, hashAlg));
+      result = combine(result, T);
+    }
+    return await encode(result.slice(0, len / 8));
+  }
 
   const ecdh = commlink.ecdh = async (key, pub, curve = "P-256", size = 256) => {
 
@@ -207,12 +222,12 @@ function Commlink(crypto) {
 
   };
 
-  const encrypt = commlink.encrypt = async (message, bits, AD = null) => {
+  const encrypt = commlink.encrypt = async (plaintext, bits, AD = null) => {
     let key = await crypto.subtle.importKey('raw', bits, {
       "name": "AES-GCM"
     }, false, ['encrypt']);
     let iv = random(12);
-    let msg = fromText(message);
+    let msg = fromText(plaintext);
     let cipher = await crypto.subtle.encrypt({
       "name": "AES-GCM",
       "iv": iv,
