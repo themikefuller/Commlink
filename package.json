@@ -1,6 +1,6 @@
 {
   "name": "commlink",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "JavaScript Encrypted Communications",
   "main": "index.js",
   "browser":"commlink.min.js",
